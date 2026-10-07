@@ -21,6 +21,21 @@ static class Program
         return 0;
     }
 
+    /// <summary>Quiet check shortly after start, then daily. Runs on the UI context so the tray can be touched directly.</summary>
+    static async Task CheckUpdatesLoop(Tray tray, Settings cfg, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(20), ct);
+            while (!ct.IsCancellationRequested)
+            {
+                if (cfg.CheckForUpdates) await tray.CheckUpdatesAsync(manual: false);
+                await Task.Delay(TimeSpan.FromHours(24), ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -55,8 +70,21 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 1 && args[0] == "--update-test")                   // diagnostics: check + apply an update with no prompts
+        {
+            var rel = Updater.CheckAsync().GetAwaiter().GetResult();
+            if (rel is null) return 2;
+            Updater.ApplyAsync(rel).GetAwaiter().GetResult();
+            return 0;
+        }
+        if (args.Length == 2 && args[0] == "--wait-pid")                      // launched by the updater: let the old instance exit first
+        {
+            try { System.Diagnostics.Process.GetProcessById(int.Parse(args[1])).WaitForExit(15000); } catch { }
+        }
+
         using var single = new Mutex(true, @"Local\MxBattery", out bool first);
         if (!first) return 0;
+        Updater.CleanUp();
 
         ApplicationConfiguration.Initialize();
 #pragma warning disable WFO5001   // dark mode support is experimental in WinForms
@@ -76,7 +104,8 @@ static class Program
         tray.RefreshRequested += monitor.RefreshNow;
         using var cts = new CancellationTokenSource();
         _ = monitor.RunAsync(cts.Token);
-        Application.Run();                                   // process exits next; no need to cancel the loop
+        _ = CheckUpdatesLoop(tray, cfg, cts.Token);
+        Application.Run();                                  // process exits next; no need to cancel the loop
         return 0;
     }
 }

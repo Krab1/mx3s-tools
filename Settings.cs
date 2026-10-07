@@ -15,6 +15,8 @@ public sealed class Settings
     public int ReminderMinutes { get; set; } = 0;          // 0 = off
     public bool NotifyFull { get; set; } = false;
     public bool StartWithWindows { get; set; } = true;
+    public bool CheckForUpdates { get; set; } = true;
+    public string SkippedVersion { get; set; } = "";
     public IconStyle IconStyle { get; set; } = IconStyle.Number;
     public Preferred Preferred { get; set; } = Preferred.Auto;
     public string DeviceFilter { get; set; } = "MX Master 3S";

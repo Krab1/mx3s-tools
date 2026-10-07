@@ -21,6 +21,10 @@ static class Toasts
         return path;
     }
 
+    /// <summary>Plain toast (app icon only), for non-battery messages.</summary>
+    public static void ShowText(string title, string body) =>
+        new ToastContentBuilder().AddText(title).AddText(body).Show();
+
     public static void Show(Kind kind, string title, string body) =>
         new ToastContentBuilder()
             .AddAppLogoOverride(new Uri(BadgeFile(kind)), ToastGenericAppLogoCrop.None)

@@ -20,6 +20,7 @@ public sealed class SettingsForm : Form
         var remind = Num(s.ReminderMinutes, 0, 240);
         var full = new CheckBox { Checked = s.NotifyFull, AutoSize = true };
         var auto = new CheckBox { Checked = s.StartWithWindows, AutoSize = true };
+        var updates = new CheckBox { Checked = s.CheckForUpdates, AutoSize = true };
         var style = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, DataSource = Enum.GetValues<IconStyle>(), Width = 120 };
         var pref = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, DataSource = Enum.GetValues<Preferred>(), Width = 120 };
         Load += (_, _) => { style.SelectedItem = s.IconStyle; pref.SelectedItem = s.Preferred; };   // binding exists only once shown
@@ -32,6 +33,7 @@ public sealed class SettingsForm : Form
         Row("Repeat reminder (min, 0 = off)", remind);
         Row("Notify when fully charged", full);
         Row("Start with Windows", auto);
+        Row("Check for updates", updates);
         Row("Icon style", style);
         Row("Preferred connection", pref);
         Row("Device name contains", name);
@@ -52,6 +54,7 @@ public sealed class SettingsForm : Form
             s.ReminderMinutes = (int)remind.Value;
             s.NotifyFull = full.Checked;
             s.StartWithWindows = auto.Checked;
+            s.CheckForUpdates = updates.Checked;
             s.IconStyle = (IconStyle)style.SelectedItem!;
             s.Preferred = (Preferred)pref.SelectedItem!;
             s.DeviceFilter = name.Text.Trim().Length > 0 ? name.Text.Trim() : "MX Master 3S";

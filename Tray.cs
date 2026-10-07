@@ -12,9 +12,11 @@ public sealed class Tray : IDisposable
     readonly NotifyIcon _ni = new() { Visible = true };
     readonly ToolStripMenuItem _status = new("Checking…") { Enabled = false };
     readonly ToolStripMenuItem _pause = new("Pause notifications") { CheckOnClick = true };
+    readonly ToolStripMenuItem _updateItem = new("Install update") { Visible = false, Font = new Font(SystemFonts.MenuFont!, FontStyle.Bold) };
     BatteryReading? _last;
     DateTime _lastAt = DateTime.Now;
     Form? _popup;
+    Release? _pending;
 
     public event Action? RefreshRequested;
 
@@ -23,14 +25,16 @@ public sealed class Tray : IDisposable
         _cfg = cfg;
         var menu = new ContextMenuStrip();
         menu.Items.AddRange([
-            _status, new ToolStripSeparator(),
+            _status, _updateItem, new ToolStripSeparator(),
             Item("Refresh now", () => RefreshRequested?.Invoke()),
+            Item("Check for updates", async () => await CheckUpdatesAsync(manual: true)),
             Item("Settings…", OpenSettings),
             _pause, new ToolStripSeparator(),
             Item("Exit", Application.Exit),
         ]);
         _ni.ContextMenuStrip = menu;                         // right click
         _ni.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowPopup(); };
+        _updateItem.Click += async (_, _) => await InstallAsync();
         SystemEvents.UserPreferenceChanged += OnTheme;       // light/dark taskbar switch
         OnReading(null);
     }
@@ -79,6 +83,41 @@ public sealed class Tray : IDisposable
         };
         try { Toasts.Show(kind, title, text); }
         catch { _ni.ShowBalloonTip(8000, title, text, kind == Kind.Full ? ToolTipIcon.Info : ToolTipIcon.Warning); }   // toast API unavailable
+    }
+
+    /// <summary>manual = user clicked "Check for updates": always answer, and go straight to the install prompt.</summary>
+    public async Task CheckUpdatesAsync(bool manual)
+    {
+        var r = await Updater.CheckAsync();
+        if (r is null)
+        {
+            if (manual) MessageBox.Show($"You're on the latest version ({Updater.Current}), or the update server can't be reached.", "MX Battery");
+            return;
+        }
+        if (!manual && r.Version.ToString() == _cfg.SkippedVersion) return;
+        bool isNew = _pending?.Version != r.Version;
+        _pending = r;
+        _updateItem.Text = $"Install update {r.Version}…";
+        _updateItem.Visible = true;
+        if (manual) await InstallAsync();
+        else if (isNew)
+            try { Toasts.ShowText("MX Battery update available", $"Version {r.Version} is ready. Right-click the tray icon to install."); } catch { }
+    }
+
+    async Task InstallAsync()
+    {
+        if (_pending is not { } r) return;
+        var a = MessageBox.Show($"Install MX Battery {r.Version}? The app will restart.\n\nYes = install now\nNo = skip this version\nCancel = decide later",
+            "MX Battery update", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+        if (a == DialogResult.No)
+        {
+            _cfg.SkippedVersion = r.Version.ToString(); _cfg.Save();
+            _updateItem.Visible = false; _pending = null;
+            return;
+        }
+        if (a != DialogResult.Yes) return;
+        try { await Updater.ApplyAsync(r); Application.Exit(); }
+        catch (Exception e) { MessageBox.Show("Update failed, the current version keeps running.\n\n" + e.Message, "MX Battery"); }
     }
 
     static string Describe(BatteryReading? r) => r is null
