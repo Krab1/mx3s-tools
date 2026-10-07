@@ -25,14 +25,18 @@ public static class Updater
         get { var v = typeof(Updater).Assembly.GetName().Version!; return new(v.Major, v.Minor, Math.Max(v.Build, 0)); }
     }
 
-    /// <summary>Newer release than the running one, or null (up to date, offline, or malformed response).</summary>
-    public static async Task<Release?> CheckAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Release newer than the running one (null = none). Reachable is false when the server can't be used at all:
+    /// offline, repo made private or deleted (404), rate limited, or an unexpected response. Never throws,
+    /// so closing the repo later just turns updating off quietly.
+    /// </summary>
+    public static async Task<(Release? Release, bool Reachable)> CheckAsync(CancellationToken ct = default)
     {
         try
         {
             using var doc = JsonDocument.Parse(await Http.GetStringAsync(Api, ct));
             var root = doc.RootElement;
-            if (!Version.TryParse(root.GetProperty("tag_name").GetString()?.TrimStart('v', 'V'), out var v) || v <= Current) return null;
+            if (!Version.TryParse(root.GetProperty("tag_name").GetString()?.TrimStart('v', 'V'), out var v) || v <= Current) return (null, true);
             string? zip = null, sha = null;
             foreach (var a in root.GetProperty("assets").EnumerateArray())
             {
@@ -41,10 +45,10 @@ public static class Updater
                 if (name.EndsWith(".zip.sha256", StringComparison.OrdinalIgnoreCase)) sha = url;
                 else if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) zip = url;
             }
-            return zip is null || sha is null ? null : new Release(v, zip, sha);   // no checksum = not installable
+            return (zip is null || sha is null ? null : new Release(v, zip, sha), true);   // no checksum = not installable
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
-        { return null; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return (null, false); }                                                      // any other failure: treat as unreachable
     }
 
     /// <summary>Download, verify, swap the exe and start the new instance. Throws on any failure, leaving the old exe in place. Caller must exit afterwards.</summary>

@@ -88,11 +88,12 @@ public sealed class Tray : IDisposable
     /// <summary>manual = user clicked "Check for updates": always answer, and go straight to the install prompt.</summary>
     public async Task CheckUpdatesAsync(bool manual)
     {
-        var r = await Updater.CheckAsync();
+        var (r, reachable) = await Updater.CheckAsync();
         if (r is null)
         {
-            if (manual) MessageBox.Show($"You're on the latest version ({Updater.Current}), or the update server can't be reached.", "MX Battery");
-            return;
+            if (manual) MessageBox.Show(reachable ? $"You're on the latest version ({Updater.Current})."
+                : "Couldn't reach the update server (offline, or updates are no longer published). The current version keeps working.", "MX Battery");
+            return;                                                          // automatic checks stay silent either way
         }
         if (!manual && r.Version.ToString() == _cfg.SkippedVersion) return;
         bool isNew = _pending?.Version != r.Version;

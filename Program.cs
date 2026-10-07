@@ -72,7 +72,7 @@ static class Program
 
         if (args.Length == 1 && args[0] == "--update-test")                   // diagnostics: check + apply an update with no prompts
         {
-            var rel = Updater.CheckAsync().GetAwaiter().GetResult();
+            var (rel, _) = Updater.CheckAsync().GetAwaiter().GetResult();
             if (rel is null) return 2;
             Updater.ApplyAsync(rel).GetAwaiter().GetResult();
             return 0;
