@@ -28,11 +28,40 @@ static class Program
 
         if (args.Length == 2 && args[0] == "--probe") return Probe(args[1]);
         if (args.Length == 2 && args[0] == "--icons") return IconSheet.Run(args[1]);
+        if (args.Length == 2 && args[0] == "--popup")                         // diagnostics: render popup states to a PNG
+        {
+            ApplicationConfiguration.Initialize();
+            var c = new Settings();
+            BatteryReading?[] rs = [new(95, false, Via.Bolt), new(72, true, Via.Bolt), new(25, null, Via.Bluetooth), new(8, false, Via.Bolt), null];
+            using var sheet = new Bitmap(5 * 310 + 10, 160);
+            using var gg = Graphics.FromImage(sheet);
+            gg.Clear(Color.Gray);
+            for (int i = 0; i < rs.Length; i++)
+            {
+                using var f = new StatusPopup(rs[i], DateTime.Now, c);
+                f.Show(); f.Opacity = 0;
+                using var b = new Bitmap(f.Width, f.Height);
+                f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
+                gg.DrawImage(b, 5 + i * 310, 5);
+            }
+            sheet.Save(args[1]);
+            return 0;
+        }
+        if (args.Length == 2 && args[0] == "--toast")                         // diagnostics: fire one toast, e.g. --toast low
+        {
+            var k = Enum.Parse<Kind>(args[1], true);
+            Toasts.Show(k, k == Kind.Full ? "Mouse fully charged" : k == Kind.Critical ? "Mouse battery critical" : "Mouse battery low", "MX Master 3S is at 28%.");
+            Thread.Sleep(1500);
+            return 0;
+        }
 
         using var single = new Mutex(true, @"Local\MxBattery", out bool first);
         if (!first) return 0;
 
         ApplicationConfiguration.Initialize();
+#pragma warning disable WFO5001   // dark mode support is experimental in WinForms
+        Application.SetColorMode(SystemColorMode.System);                    // menus + settings follow the Windows theme
+#pragma warning restore WFO5001
         var cfg = Settings.Load();
         Settings.SetAutostart(cfg.StartWithWindows);                         // keep the Run key in sync with the setting
 

@@ -20,6 +20,13 @@ public static class Icons
         catch { return false; }
     }
 
+    /// <summary>Status colour for text/bars on a light or dark surface; grey when unknown.</summary>
+    public static Color Status(int? pct, bool light, Settings cfg) =>
+        pct is null ? Color.FromArgb(light ? 120 : 160, light ? 0 : 255, light ? 0 : 255, light ? 0 : 255)
+        : pct <= cfg.CriticalPercent ? (light ? Color.FromArgb(0xC4, 0x2B, 0x1C) : Color.FromArgb(0xFF, 0x6B, 0x6B))
+        : pct <= cfg.LowPercent ? (light ? Color.FromArgb(0xB8, 0x6E, 0x00) : Color.FromArgb(0xFC, 0xC2, 0x3A))
+        : (light ? Color.FromArgb(0x0F, 0x7B, 0x0F) : Color.FromArgb(0x6C, 0xCB, 0x5F));
+
     // ---------- App icon: mouse silhouette used as a battery gauge ----------
     public static Bitmap App(int s, float level = 0.62f) => Draw(s, 4, g =>
     {

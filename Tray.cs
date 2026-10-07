@@ -1,21 +1,19 @@
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace MxBattery;
 
-/// <summary>Tray icon, right-click menu, left-click status popup, toasts.</summary>
+/// <summary>Tray icon (theme-aware), right-click menu, left-click flyout, toasts.</summary>
 public sealed class Tray : IDisposable
 {
     [DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
 
-    static readonly Font PopupFont = new("Segoe UI", 10);
     readonly Settings _cfg;
     readonly NotifyIcon _ni = new() { Visible = true };
     readonly ToolStripMenuItem _status = new("Checking…") { Enabled = false };
     readonly ToolStripMenuItem _pause = new("Pause notifications") { CheckOnClick = true };
     BatteryReading? _last;
-    DateTime _lastAt;
+    DateTime _lastAt = DateTime.Now;
     Form? _popup;
 
     public event Action? RefreshRequested;
@@ -33,6 +31,7 @@ public sealed class Tray : IDisposable
         ]);
         _ni.ContextMenuStrip = menu;                         // right click
         _ni.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowPopup(); };
+        SystemEvents.UserPreferenceChanged += OnTheme;       // light/dark taskbar switch
         OnReading(null);
     }
 
@@ -43,27 +42,43 @@ public sealed class Tray : IDisposable
         return i;
     }
 
+    void OnTheme(object? s, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color) UpdateIcon();
+    }
+
     public void OnReading(BatteryReading? r)
     {
         _last = r; _lastAt = DateTime.Now;
         _status.Text = Describe(r);
         var tip = "MX Master 3S: " + Describe(r);
         _ni.Text = tip[..Math.Min(63, tip.Length)];          // NotifyIcon limit: 63 chars
+        UpdateIcon();
+    }
+
+    void UpdateIcon()
+    {
+        int s = SystemInformation.SmallIconSize.Width;
+        using var bmp = Icons.Tray(s, _last?.Percent, _last?.Charging == true, Icons.TaskbarIsLight(), _cfg.IconStyle, _cfg);
+        var h = bmp.GetHicon();
+        var icon = (Icon)Icon.FromHandle(h).Clone();
+        DestroyIcon(h);
         var old = _ni.Icon;
-        _ni.Icon = Render(r);
+        _ni.Icon = icon;
         old?.Dispose();
     }
 
     public void OnAlert(Alert a, BatteryReading r)
     {
         if (_pause.Checked) return;
-        var (title, text) = a switch
+        var (kind, title, text) = a switch
         {
-            Alert.Critical => ("Mouse battery critical", $"{r.Percent}% left — charge now."),
-            Alert.Full => ("Mouse fully charged", "100%"),
-            _ => ("Mouse battery low", $"{r.Percent}% left."),
+            Alert.Critical => (Kind.Critical, "Mouse battery critical", $"{r.Percent}% left — charge now."),
+            Alert.Full => (Kind.Full, "Mouse fully charged", "MX Master 3S is at 100%."),
+            _ => (Kind.Low, "Mouse battery low", $"MX Master 3S is at {r.Percent}%."),
         };
-        _ni.ShowBalloonTip(8000, title, text, a == Alert.Full ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        try { Toasts.Show(kind, title, text); }
+        catch { _ni.ShowBalloonTip(8000, title, text, kind == Kind.Full ? ToolTipIcon.Info : ToolTipIcon.Warning); }   // toast API unavailable
     }
 
     static string Describe(BatteryReading? r) => r is null
@@ -79,59 +94,14 @@ public sealed class Tray : IDisposable
     void ShowPopup()
     {
         _popup?.Close();
-        var f = _popup = new Form
-        {
-            FormBorderStyle = FormBorderStyle.FixedToolWindow, ShowInTaskbar = false, TopMost = true,
-            StartPosition = FormStartPosition.Manual, Text = "MX Master 3S", ClientSize = new(240, 110),
-        };
-        var wa = Screen.PrimaryScreen!.WorkingArea;
-        f.Location = new(wa.Right - f.Width - 8, wa.Bottom - f.Height - 8);
-        f.Controls.Add(new Label
-        {
-            Dock = DockStyle.Fill, Padding = new(12), Font = PopupFont,
-            Text = $"{Describe(_last)}\r\n\r\nChecked {_lastAt:T}\r\nAlert below {_cfg.LowPercent}% (critical {_cfg.CriticalPercent}%)",
-        });
-        f.Deactivate += (_, _) => f.Close();
-        f.Show();
-        f.Activate();
-    }
-
-    Icon Render(BatteryReading? r)
-    {
-        int s = SystemInformation.SmallIconSize.Width;
-        using var bmp = new Bitmap(s, s);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            var c = r is null ? Color.Gray
-                : r.Percent <= _cfg.CriticalPercent ? Color.Red
-                : r.Percent <= _cfg.LowPercent ? Color.Orange : Color.LimeGreen;
-            using var brush = new SolidBrush(c);
-            if (_cfg.IconStyle == IconStyle.Glyph)
-            {
-                float w = s * 0.5f, x = (s - w) / 2f, top = s * 0.12f, h = s * 0.8f;
-                using var pen = new Pen(c, Math.Max(1, s / 12f));
-                g.DrawRectangle(pen, x, top, w, h);
-                float fill = h * (r?.Percent ?? 0) / 100f;
-                g.FillRectangle(brush, x, top + h - fill, w, fill);
-            }
-            else
-            {
-                var text = r is null ? "?" : r.Percent.ToString();
-                using var font = new Font("Segoe UI", text.Length > 2 ? s * 0.42f : s * 0.62f, FontStyle.Bold, GraphicsUnit.Pixel);
-                var sz = g.MeasureString(text, font);
-                g.DrawString(text, font, brush, (s - sz.Width) / 2f, (s - sz.Height) / 2f);
-            }
-        }
-        var h2 = bmp.GetHicon();
-        var icon = (Icon)Icon.FromHandle(h2).Clone();
-        DestroyIcon(h2);
-        return icon;
+        _popup = new StatusPopup(_last, _lastAt, _cfg);
+        _popup.Show();
+        _popup.Activate();
     }
 
     public void Dispose()
     {
+        SystemEvents.UserPreferenceChanged -= OnTheme;
         _ni.Visible = false;
         _ni.Icon?.Dispose();
         _ni.Dispose();
