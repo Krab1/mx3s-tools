@@ -20,13 +20,15 @@ sealed class StatusPopup : Form
     readonly float _k;                       // DPI scale: 1.0 = 96 dpi
     readonly Font _title, _small, _big, _notConn;
     readonly Metrics _lay;
+    readonly string _subtitle;               // shown when not connected: why, if we know
 
-    record Metrics(float BigY, SizeF Big, float StateX, float StateY, float BarY, float FootY, int W, int H);
+    record Metrics(float BigY, SizeF Big, float StateX, float StateY, float BarY, float SubH, int W, int H);
 
     /// <param name="scale">Test override for the DPI scale; null = this display's scale.</param>
-    public StatusPopup(BatteryReading? r, DateTime at, Settings cfg, float? scale = null, bool? light = null)
+    public StatusPopup(BatteryReading? r, DateTime at, Settings cfg, float? scale = null, bool? light = null, string? issue = null)
     {
         _r = r; _at = at; _cfg = cfg;
+        _subtitle = string.IsNullOrWhiteSpace(issue) ? "Wake the mouse or check the connection." : issue;
         _light = light ?? Icons.TaskbarIsLight();
         _k = scale ?? DeviceDpi / 96f;
         _title = Px("Segoe UI Semibold", 14, FontStyle.Regular); _small = Px("Segoe UI", 12, FontStyle.Regular);
@@ -48,6 +50,7 @@ sealed class StatusPopup : Form
     Font Px(string name, float px, FontStyle st) => new(name, px * _k, st, GraphicsUnit.Pixel);
 
     static readonly StringFormat Tight = new(StringFormat.GenericTypographic) { FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces };
+    static readonly StringFormat Wrap = new(StringFormat.GenericTypographic);
 
     Metrics Measure()
     {
@@ -59,8 +62,10 @@ sealed class StatusPopup : Form
         var big = g.MeasureString(_r is null ? "Not connected" : $"{_r.Percent}%", _r is null ? _notConn : _big, 1000, Tight);
         float smallH = g.MeasureString("Ag", _small, 1000, Tight).Height;
         float barY = bigY + big.Height + S(8);
-        int h = (int)Math.Ceiling(barY + S(10) + S(8) + S(16));            // bar, threshold ticks, bottom padding
-        return new(bigY, big, pad + big.Width + S(10), bigY + big.Height - smallH - S(6), barY, 0, (int)Math.Ceiling(S(300)), h);
+        int w = (int)Math.Ceiling(S(300));
+        float subH = _r is null ? g.MeasureString(_subtitle, _small, (int)(w - pad * 2), Wrap).Height : 0;
+        int h = (int)Math.Ceiling(barY + (_r is null ? subH : S(10) + S(8)) + S(16));   // text or bar+ticks, then bottom padding
+        return new(bigY, big, pad + big.Width + S(10), bigY + big.Height - smallH - S(6), barY, subH, w, h);
     }
 
     protected override CreateParams CreateParams
@@ -98,7 +103,7 @@ sealed class StatusPopup : Form
         if (_r is null)
         {
             g.DrawString("Not connected", _notConn, dimB, pad, _lay.BigY, Tight);
-            g.DrawString("Wake the mouse or check the connection.", _small, dimB, pad, _lay.BarY, Tight);
+            g.DrawString(_subtitle, _small, dimB, new RectangleF(pad, _lay.BarY, Width - pad * 2, _lay.SubH + S(2)), Wrap);
         }
         else
         {

@@ -1,4 +1,4 @@
-﻿using HidSharp;
+using HidSharp;
 using System.Text;
 
 namespace MxBattery;
@@ -20,6 +20,9 @@ public sealed class HidppSource(Func<string> nameFilter) : IBatterySource
     int _dev;                          // receiver slot 1..6 holding the mouse, 0 = unknown
     int _feat;                         // battery feature index, 0 = unknown
     bool _unified;                     // true: 0x1004, false: 0x1000
+    string? _issue;
+
+    public string? Issue => _issue;
 
     public Task<BatteryReading?> ReadAsync(CancellationToken ct) => Task.Run(Read, ct);
 
@@ -31,11 +34,12 @@ public sealed class HidppSource(Func<string> nameFilter) : IBatterySource
             if (_dev == 0 && !FindDevice()) return null;
             if (_feat == 0 && !FindBattery()) return null;
             var r = _unified ? ReadUnified() : ReadStatus();
-            if (r is null) { _dev = _feat = 0; }             // re-pair / filter change: rediscover next poll
+            if (r is null) { _issue = $"Bolt: the mouse (receiver slot {_dev}) did not answer. It may be asleep, move it."; _dev = _feat = 0; }   // rediscover next poll
+            else _issue = null;
             return r;
         }
         catch (Exception e) when (e is IOException or TimeoutException or ObjectDisposedException)
-        { Reset(); return null; }                            // receiver unplugged or write stalled
+        { _issue = "Bolt: lost contact with the receiver (" + e.GetType().Name + ")."; Reset(); return null; }                            // receiver unplugged or write stalled
     }
 
     void Reset() { _s?.Dispose(); _s = null; _dev = 0; _feat = 0; }
@@ -43,11 +47,13 @@ public sealed class HidppSource(Func<string> nameFilter) : IBatterySource
     bool Open()
     {
         // Windows exposes one HID device per collection; the long-report (0x11, 20 bytes) one is ours.
-        foreach (var h in DeviceList.Local.GetHidDevices(Vid, BoltPid))
+        var all = DeviceList.Local.GetHidDevices(Vid, BoltPid).ToList();
+        foreach (var h in all)
             Log?.Invoke($"hid {h.DevicePath} in={h.GetMaxInputReportLength()} out={h.GetMaxOutputReportLength()}");
-        var dev = DeviceList.Local.GetHidDevices(Vid, BoltPid)
-            .FirstOrDefault(d => d.GetMaxOutputReportLength() == 20 && d.GetMaxInputReportLength() == 20);
-        if (dev is null || !dev.TryOpen(out var s)) return false;
+        if (all.Count == 0) { _issue = "Bolt: no Logi Bolt receiver found."; return false; }
+        var dev = all.FirstOrDefault(d => d.GetMaxOutputReportLength() == 20 && d.GetMaxInputReportLength() == 20);
+        if (dev is null) { _issue = "Bolt: receiver found, but its HID++ interface was not recognised."; return false; }
+        if (!dev.TryOpen(out var s)) { _issue = "Bolt: receiver found, but it could not be opened. Another app may be holding it."; return false; }
         _s = s;
         return true;
     }
@@ -55,7 +61,10 @@ public sealed class HidppSource(Func<string> nameFilter) : IBatterySource
     bool FindDevice()
     {
         var filter = nameFilter();
-        foreach (int d in Ping())
+        var answered = Ping();
+        var seen = new List<string>();
+        if (answered.Count == 0) { _issue = "Bolt: receiver found, but no paired device answered. Is the mouse awake and on the Bolt channel?"; return false; }
+        foreach (int d in answered)
         {
             var nameIdx = Req(d, 0, 0, 0x00, 0x05)?[4] ?? 0;                // IRoot.GetFeature(DeviceName)
             if (nameIdx == 0) continue;
@@ -67,8 +76,10 @@ public sealed class HidppSource(Func<string> nameFilter) : IBatterySource
                 for (int i = 4; i < r.Length && r[i] != 0 && sb.Length < count; i++) sb.Append((char)r[i]);
                 if (sb.Length == before) break;
             }
+            seen.Add(sb.Length > 0 ? sb.ToString() : $"slot {d}");
             if (sb.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase)) { _dev = d; return true; }
         }
+        _issue = $"Bolt: {answered.Count} device(s) answered, none named \"{filter}\" (saw: {string.Join(", ", seen)}).";
         return false;
     }
 
@@ -79,6 +90,8 @@ public sealed class HidppSource(Func<string> nameFilter) : IBatterySource
             var idx = Req(_dev, 0, 0, (byte)(id >> 8), (byte)id)?[4] ?? 0;
             if (idx != 0) { _feat = idx; _unified = unified; return true; }
         }
+        _issue = $"Bolt: the mouse (slot {_dev}) answered, but exposes no battery feature.";
+        _dev = 0;
         return false;
     }
 

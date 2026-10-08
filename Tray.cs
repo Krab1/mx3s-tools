@@ -19,6 +19,8 @@ public sealed class Tray : IDisposable
     Release? _pending;
 
     public event Action? RefreshRequested;
+    public Func<string?>? IssueProvider;                   // why the last read failed, shown in the popup
+    string? _issue;
 
     public Tray(Settings cfg)
     {
@@ -28,6 +30,7 @@ public sealed class Tray : IDisposable
             _status, _updateItem, new ToolStripSeparator(),
             Item("Refresh now", () => RefreshRequested?.Invoke()),
             Item("Check for updates", async () => await CheckUpdatesAsync(manual: true)),
+            Item("Copy diagnostics", async () => await CopyDiagnosticsAsync()),
             Item("Settings…", OpenSettings),
             _pause, new ToolStripSeparator(),
             Item("Exit", Application.Exit),
@@ -59,7 +62,7 @@ public sealed class Tray : IDisposable
 
     public void OnReading(BatteryReading? r)
     {
-        _last = r; _lastAt = DateTime.Now;
+        _last = r; _lastAt = DateTime.Now; _issue = r is null ? IssueProvider?.Invoke() : null;
         _status.Text = Describe(r);
         var tip = _prefix + "MX Master 3S: " + Describe(r);
         _ni.Text = tip[..Math.Min(63, tip.Length)];          // NotifyIcon limit: 63 chars
@@ -127,6 +130,13 @@ public sealed class Tray : IDisposable
         catch (Exception e) { MessageBox.Show("Update failed, the current version keeps running.\n\n" + e.Message, "MX Battery"); }
     }
 
+    async Task CopyDiagnosticsAsync()
+    {
+        var text = await Task.Run(() => Diagnostics.Run(_cfg));
+        try { Clipboard.SetText(text); MessageBox.Show("Diagnostics copied to the clipboard. Paste them where you need them.", "MX Battery"); }
+        catch (Exception e) { MessageBox.Show("Couldn't use the clipboard: " + e.Message, "MX Battery"); }
+    }
+
     static string Describe(BatteryReading? r) => r is null
         ? "Not connected"
         : $"{r.Percent}%{(r.Charging == true ? " (charging)" : "")} via {r.Via}";
@@ -140,7 +150,7 @@ public sealed class Tray : IDisposable
     void ShowPopup()
     {
         _popup?.Close();
-        _popup = new StatusPopup(_last, _lastAt, _cfg);
+        _popup = new StatusPopup(_last, _lastAt, _cfg, issue: _issue);
         _popup.Show();
         _popup.Activate();
     }

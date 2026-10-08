@@ -9,15 +9,7 @@ static class Program
     /// <summary>Diagnostics: MxBattery.exe --probe out.txt  (traces one read of each source into the file)</summary>
     static int Probe(string path)
     {
-        using var w = new StreamWriter(path) { AutoFlush = true };
-        var cfg = Settings.Load();
-        HidppSource.Log = w.WriteLine;
-        foreach (IBatterySource s in new IBatterySource[] { new HidppSource(() => cfg.DeviceFilter), new BluetoothSource(() => cfg.DeviceFilter) })
-        {
-            w.WriteLine($"== {s.GetType().Name}");
-            try { w.WriteLine("result: " + (s.ReadAsync(default).GetAwaiter().GetResult()?.ToString() ?? "null")); }
-            catch (Exception e) { w.WriteLine("EXCEPTION " + e); }
-        }
+        File.WriteAllText(path, Diagnostics.Run(Settings.Load()));
         return 0;
     }
 
@@ -58,7 +50,7 @@ static class Program
                     int x = 5, rowH = 0;
                     for (int i = 0; i < rs.Length; i++)
                     {
-                        using var f = new StatusPopup(rs[i], DateTime.Now, c, scale, light);
+                        using var f = new StatusPopup(rs[i], DateTime.Now, c, scale, light, rs[i] is null ? "Bolt: no Logi Bolt receiver found.\nBluetooth: \"MX Master 3S\" is paired but not connected." : null);
                         f.Show(); f.Opacity = 0;
                         using var b = new Bitmap(f.Width, f.Height);
                         f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
@@ -124,6 +116,7 @@ static class Program
         using var tray = new Tray(cfg);
         var monitor = new Monitor(source, cfg, tray.OnReading, tray.OnAlert);
         tray.RefreshRequested += monitor.RefreshNow;
+        tray.IssueProvider = () => source.Issue;
         using var cts = new CancellationTokenSource();
         _ = monitor.RunAsync(cts.Token);
         if (mock)
