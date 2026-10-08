@@ -55,6 +55,23 @@ public sealed class Settings
         SetAutostart(StartWithWindows);
     }
 
+    /// <summary>Make sure Start menu has "MX Battery" pointing at this exe, so a closed app can be relaunched from Search/Start.</summary>
+    public static void EnsureStartMenuShortcut()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (exe is null) return;
+            var lnk = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "MX Battery.lnk");
+            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell")!)!;
+            dynamic s = shell.CreateShortcut(lnk);                               // loads the existing one if present
+            if (string.Equals((string)s.TargetPath, exe, StringComparison.OrdinalIgnoreCase)) return;
+            s.TargetPath = exe; s.WorkingDirectory = System.IO.Path.GetDirectoryName(exe); s.Description = "MX Master battery monitor";
+            s.Save();
+        }
+        catch { }                                                                // cosmetic: never block startup
+    }
+
     public static void SetAutostart(bool on)
     {
         using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);

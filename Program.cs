@@ -104,7 +104,7 @@ static class Program
         if (mock) Settings.NoPersist = true;
         using var single = new Mutex(true, mock ? @"Local\MxBattery.mock" : @"Local\MxBattery", out bool first);
         if (!first) return 0;
-        if (!mock) Updater.CleanUp();
+        if (!mock) { Updater.CleanUp(); Settings.EnsureStartMenuShortcut(); }
 
         ApplicationConfiguration.Initialize();
 #pragma warning disable WFO5001   // dark mode support is experimental in WinForms
