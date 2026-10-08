@@ -33,6 +33,7 @@ public sealed class Tray : IDisposable
             Item("Copy diagnostics", async () => await CopyDiagnosticsAsync()),
             Item("Settings…", OpenSettings),
             _pause, new ToolStripSeparator(),
+            new ToolStripMenuItem($"MX Battery {Updater.Current}") { Enabled = false },
             Item("Exit", Application.Exit),
         ]);
         _ni.ContextMenuStrip = menu;                         // right click

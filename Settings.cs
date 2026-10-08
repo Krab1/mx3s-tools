@@ -18,6 +18,7 @@ public sealed class Settings
     public bool NotifyFull { get; set; } = false;
     public bool StartWithWindows { get; set; } = true;
     public bool CheckForUpdates { get; set; } = true;
+    public int Schema { get; set; }                        // settings-file version; <2 files get the new default icon style once
     public string SkippedVersion { get; set; } = "";
     public IconStyle IconStyle { get; set; } = IconStyle.Mouse;
     public Preferred Preferred { get; set; } = Preferred.Auto;
@@ -29,15 +30,26 @@ public sealed class Settings
 
     public static Settings Load()
     {
-        try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(PathName), Json) ?? new(); }
-        catch { return new(); }                              // missing or corrupt file: defaults
+        try
+        {
+            return Migrate(JsonSerializer.Deserialize<Settings>(File.ReadAllText(PathName), Json) ?? new());
+        }
+        catch { return new() { Schema = 2 }; }               // missing or corrupt file: defaults
     }
 
     public static bool NoPersist;                           // mock mode: never write settings or the autostart key
 
+    /// <summary>Files written before 1.0.3 say IconStyle=Number, which was only the old default, so move them to the new one once.</summary>
+    public static Settings Migrate(Settings s)
+    {
+        if (s.Schema < 2) { s.IconStyle = IconStyle.Mouse; s.Schema = 2; }
+        return s;
+    }
+
     public void Save()
     {
         if (NoPersist) return;
+        Schema = 2;
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(PathName)!);
         File.WriteAllText(PathName, JsonSerializer.Serialize(this, Json));
         SetAutostart(StartWithWindows);

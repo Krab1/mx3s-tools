@@ -61,16 +61,23 @@ static class Program
             sheet.Save(args[1]);
             return 0;
         }
-        if (args.Length == 2 && args[0] == "--settings")                      // diagnostics: render the settings window to a PNG
+        if (args.Length == 2 && args[0] == "--settings")                      // diagnostics: render the settings window at 100/150/200% to a PNG
         {
             ApplicationConfiguration.Initialize();
             Application.SetColorMode(SystemColorMode.System);
             Settings.NoPersist = true;
-            using var f = new SettingsForm(new Settings());
-            f.Show(); Application.DoEvents(); Application.DoEvents();
-            using var b = new Bitmap(f.Width, f.Height);
-            f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
-            b.Save(args[1]);
+            var shots = new List<Bitmap>();
+            foreach (var k in new[] { 1.0f, 1.5f, 2.0f })
+            {
+                using var f = new SettingsForm(new Settings(), k);
+                f.Show(); Application.DoEvents(); Application.DoEvents();
+                var b = new Bitmap(f.Width, f.Height);
+                f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
+                shots.Add(b);
+            }
+            using var sheet = new Bitmap(shots.Sum(b => b.Width) + 40, shots.Max(b => b.Height) + 20);
+            using (var g = Graphics.FromImage(sheet)) { g.Clear(Color.Gray); int x = 10; foreach (var b in shots) { g.DrawImage(b, x, 10); x += b.Width + 10; } }
+            sheet.Save(args[1]);
             return 0;
         }
         if (args.Length == 2 && args[0] == "--toast")                         // diagnostics: fire one toast, e.g. --toast low
@@ -167,6 +174,9 @@ static class SelfTest
             s.ReminderMinutes = 10;
             Check(a.Next(R(25), s, t.AddMinutes(5)) == Alert.None, "reminder too early");
             Check(a.Next(R(25), s, t.AddMinutes(11)) == Alert.Reminder, "reminder fires");
+
+            Check(Settings.Migrate(new Settings { IconStyle = IconStyle.Number, Schema = 0 }).IconStyle == IconStyle.Mouse, "old settings file moves to the new icon style");
+            Check(Settings.Migrate(new Settings { IconStyle = IconStyle.Number, Schema = 2 }).IconStyle == IconStyle.Number, "a deliberate Number choice survives");
 
             var bolt = new Fake(R(40)); var bt = new Fake(new(60, null, Via.Bluetooth));
             var pref = Preferred.Auto;
