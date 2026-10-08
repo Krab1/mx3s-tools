@@ -12,7 +12,8 @@ public static class Icons
 {
     // Windows 11 palette: brighter accents on dark, deeper ones on light for contrast.
     static readonly Color Blue1 = Color.FromArgb(0x3B, 0x8C, 0xFF), Blue2 = Color.FromArgb(0x1D, 0x4E, 0xD8);
-    public static readonly Color Amber = Color.FromArgb(0xF5, 0xA5, 0x24), Red = Color.FromArgb(0xE5, 0x48, 0x4D), Green = Color.FromArgb(0x30, 0xA4, 0x6C);
+    public static readonly Color Yellow = Color.FromArgb(0xFF, 0xD2, 0x1F);      // middle tier of the tray icon
+    public static readonly Color Amber =Color.FromArgb(0xF5, 0xA5, 0x24), Red = Color.FromArgb(0xE5, 0x48, 0x4D), Green = Color.FromArgb(0x30, 0xA4, 0x6C);
 
     public static bool TaskbarIsLight()
     {
@@ -23,16 +24,16 @@ public static class Icons
     /// <summary>Status colour for text/bars on a light or dark surface; grey when unknown.</summary>
     public static Color Status(int? pct, bool light, Settings cfg) =>
         pct is null ? Color.FromArgb(light ? 120 : 160, light ? 0 : 255, light ? 0 : 255, light ? 0 : 255)
-        : pct <= cfg.CriticalPercent ? (light ? Color.FromArgb(0xC4, 0x2B, 0x1C) : Color.FromArgb(0xFF, 0x6B, 0x6B))
-        : pct <= cfg.LowPercent ? (light ? Color.FromArgb(0xB8, 0x6E, 0x00) : Color.FromArgb(0xFC, 0xC2, 0x3A))
-        : (light ? Color.FromArgb(0x0F, 0x7B, 0x0F) : Color.FromArgb(0x6C, 0xCB, 0x5F));
+        : pct >= cfg.GreenFrom ? (light ? Color.FromArgb(0x0F, 0x7B, 0x0F) : Color.FromArgb(0x6C, 0xCB, 0x5F))
+        : pct >= cfg.YellowFrom ? (light ? Color.FromArgb(0x9A, 0x7A, 0x00) : Color.FromArgb(0xFF, 0xD6, 0x0A))
+        : (light ? Color.FromArgb(0xC4, 0x2B, 0x1C) : Color.FromArgb(0xFF, 0x6B, 0x6B));    // same tiers as the tray icon
 
     // ---------- App icon: mouse silhouette used as a battery gauge ----------
-    public static Bitmap App(int s, float level = 0.62f) => Draw(s, 4, g =>
+    public static Bitmap App(int s, float level = 0.62f, Color? fillColor = null, bool disabled = false) => Draw(s, 4, g =>
     {
         float u = s * 4;
         var tile = Rounded(new(0, 0, u, u), u * 0.23f);
-        using (var b = new LinearGradientBrush(new RectangleF(0, 0, u, u), Blue1, Blue2, 55f)) g.FillPath(b, tile);
+        using (var b = new LinearGradientBrush(new RectangleF(0, 0, u, u), disabled ? Color.FromArgb(0x8A, 0x93, 0xA3) : Blue1, disabled ? Color.FromArgb(0x5B, 0x64, 0x75) : Blue2, 55f)) g.FillPath(b, tile);
         using (var sheen = new LinearGradientBrush(new RectangleF(0, 0, u, u * 0.5f), Color.FromArgb(60, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f))
         { g.SetClip(tile); g.FillRectangle(sheen, 0, 0, u, u * 0.5f); g.ResetClip(); }
 
@@ -43,7 +44,7 @@ public static class Icons
 
         float top = u * 0.13f + u * 0.74f * (1 - level);                       // battery level, filled from the bottom
         g.SetClip(body);
-        using (var fill = new SolidBrush(Color.FromArgb(0x2E, 0xD5, 0x73))) g.FillRectangle(fill, 0, top, u, u);
+        using (var fill = new SolidBrush(fillColor ?? Color.FromArgb(0x2E, 0xD5, 0x73))) g.FillRectangle(fill, 0, top, u, u);
         g.ResetClip();
 
         using var line = new Pen(Color.FromArgb(200, Blue2), Math.Max(2, u * 0.022f)) { StartCap = LineCap.Round, EndCap = LineCap.Round };
@@ -56,6 +57,11 @@ public static class Icons
     // ---------- Tray: transparent, theme foreground, accent only when it matters ----------
     public static Bitmap Tray(int s, int? pct, bool charging, bool light, IconStyle style, Settings cfg)
     {
+        if (style == IconStyle.Mouse)                          // the app icon, with the whole mouse in one colour: green / amber / red
+        {
+            Color? fill = pct is null || pct >= cfg.GreenFrom ? null : pct >= cfg.YellowFrom ? Yellow : Red;   // null = the default green
+            return App(s, pct is null ? 0f : 1f, fill, disabled: pct is null);
+        }
         var fg = light ? Color.FromArgb(0x1A, 0x1A, 0x1A) : Color.White;
         Color accent = pct is null ? Color.FromArgb(150, fg)
             : pct <= cfg.CriticalPercent ? (light ? Color.FromArgb(0xC4, 0x2B, 0x1C) : Color.FromArgb(0xFF, 0x6B, 0x6B))

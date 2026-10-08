@@ -48,18 +48,37 @@ static class Program
             ApplicationConfiguration.Initialize();
             var c = new Settings();
             BatteryReading?[] rs = [new(95, false, Via.Bolt), new(72, true, Via.Bolt), new(25, null, Via.Bluetooth), new(8, false, Via.Bolt), null];
-            using var sheet = new Bitmap(5 * 310 + 10, 160);
+            using var sheet = new Bitmap(5 * 700 + 10, 3 * 2 * 330 + 10);
             using var gg = Graphics.FromImage(sheet);
             gg.Clear(Color.Gray);
-            for (int i = 0; i < rs.Length; i++)
-            {
-                using var f = new StatusPopup(rs[i], DateTime.Now, c);
-                f.Show(); f.Opacity = 0;
-                using var b = new Bitmap(f.Width, f.Height);
-                f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
-                gg.DrawImage(b, 5 + i * 310, 5);
-            }
+            int row = 0;
+            foreach (var scale in new[] { 1.0f, 1.5f, 2.0f })                 // 100% / 150% / 200% display scaling, dark + light
+                foreach (var light in new[] { false, true })
+                {
+                    int x = 5, rowH = 0;
+                    for (int i = 0; i < rs.Length; i++)
+                    {
+                        using var f = new StatusPopup(rs[i], DateTime.Now, c, scale, light);
+                        f.Show(); f.Opacity = 0;
+                        using var b = new Bitmap(f.Width, f.Height);
+                        f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
+                        gg.DrawImage(b, x, 5 + row * 330); x += f.Width + 8; rowH = Math.Max(rowH, f.Height);
+                    }
+                    row++;
+                }
             sheet.Save(args[1]);
+            return 0;
+        }
+        if (args.Length == 2 && args[0] == "--settings")                      // diagnostics: render the settings window to a PNG
+        {
+            ApplicationConfiguration.Initialize();
+            Application.SetColorMode(SystemColorMode.System);
+            Settings.NoPersist = true;
+            using var f = new SettingsForm(new Settings());
+            f.Show(); Application.DoEvents(); Application.DoEvents();
+            using var b = new Bitmap(f.Width, f.Height);
+            f.DrawToBitmap(b, new Rectangle(0, 0, f.Width, f.Height));
+            b.Save(args[1]);
             return 0;
         }
         if (args.Length == 2 && args[0] == "--toast")                         // diagnostics: fire one toast, e.g. --toast low
@@ -82,19 +101,22 @@ static class Program
             try { System.Diagnostics.Process.GetProcessById(int.Parse(args[1])).WaitForExit(15000); } catch { }
         }
 
-        using var single = new Mutex(true, @"Local\MxBattery", out bool first);
+        bool mock = args.Contains("--mock");                                  // preview: fake battery states, nothing persisted
+        if (mock) Settings.NoPersist = true;
+        using var single = new Mutex(true, mock ? @"Local\MxBattery.mock" : @"Local\MxBattery", out bool first);
         if (!first) return 0;
-        Updater.CleanUp();
+        if (!mock) Updater.CleanUp();
 
         ApplicationConfiguration.Initialize();
 #pragma warning disable WFO5001   // dark mode support is experimental in WinForms
         Application.SetColorMode(SystemColorMode.System);                    // menus + settings follow the Windows theme
 #pragma warning restore WFO5001
-        var cfg = Settings.Load();
-        Settings.SetAutostart(cfg.StartWithWindows);                         // keep the Run key in sync with the setting
+        var cfg = mock ? new Settings() : Settings.Load();
+        if (!mock) Settings.SetAutostart(cfg.StartWithWindows);              // keep the Run key in sync with the setting
 
         // Composition root: the only place that knows the concrete sources.
-        var source = new CompositeSource(
+        var fake = new MockSource();
+        IBatterySource source = mock ? fake : new CompositeSource(
             new HidppSource(() => cfg.DeviceFilter),
             new BluetoothSource(() => cfg.DeviceFilter),
             () => cfg.Preferred);
@@ -104,7 +126,16 @@ static class Program
         tray.RefreshRequested += monitor.RefreshNow;
         using var cts = new CancellationTokenSource();
         _ = monitor.RunAsync(cts.Token);
-        _ = CheckUpdatesLoop(tray, cfg, cts.Token);
+        if (mock)
+        {
+            tray.SetTooltipPrefix("[MOCK] ");
+            foreach (var (label, r) in MockSource.States.Reverse())
+                tray.AddMenu("Mock: " + label, () => { fake.Current = r; monitor.RefreshNow(); });
+            tray.AddMenu("Mock: toast - fully charged", () => Toasts.Show(Kind.Full, "Mouse fully charged", "MX Master 3S is at 100%."));
+            tray.AddMenu("Mock: toast - critical", () => Toasts.Show(Kind.Critical, "Mouse battery critical", "8% left — charge now."));
+            tray.AddMenu("Mock: toast - low", () => Toasts.Show(Kind.Low, "Mouse battery low", "MX Master 3S is at 28%."));
+        }
+        else _ = CheckUpdatesLoop(tray, cfg, cts.Token);
         Application.Run();                                  // process exits next; no need to cancel the loop
         return 0;
     }

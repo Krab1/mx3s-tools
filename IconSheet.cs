@@ -45,9 +45,9 @@ static class IconSheet
 
         // 2. Tray icons on taskbar strips: actual size (100%), 200%, and a 4x magnified view of the 16 px bitmap
         Text("Tray icon  (follows the Windows taskbar theme; actual size, 200%, 4x zoom of the 16 px bitmap)", 24, 322, h1, Color.White);
-        (string label, int? pct, bool chg)[] states = [("90%", 90, false), ("25% low", 25, false), ("8% critical", 8, false), ("72% charging", 72, true), ("100%", 100, false), ("not connected", null, false)];
+        (string label, int? pct, bool chg)[] states = [("100%", 100, false), ("70% green", 70, false), ("69% yellow", 69, false), ("40% yellow", 40, false), ("39% red", 39, false), ("not connected", null, false)];
         int row = 0;
-        foreach (var style in new[] { IconStyle.Number, IconStyle.Glyph })
+        foreach (var style in new[] { IconStyle.Mouse, IconStyle.Number })
             foreach (var light in new[] { false, true })
             {
                 int y = 362 + row++ * 112;

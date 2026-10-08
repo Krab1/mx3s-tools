@@ -6,9 +6,11 @@ public sealed class SettingsForm : Form
     {
         Text = "MX Battery settings";
         FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = MinimizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen; AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        var t = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Padding = new(12), Dock = DockStyle.Fill };
+        StartPosition = FormStartPosition.CenterScreen;
+        AutoScaleDimensions = new SizeF(96f, 96f); AutoScaleMode = AutoScaleMode.Dpi;      // code-built forms don't scale their fixed widths otherwise
+        var t = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Padding = new(12), Location = Point.Empty };
         Controls.Add(t);
+        Load += (_, _) => { ClientSize = t.GetPreferredSize(Size.Empty); CenterToScreen(); };   // size to content after DPI scaling, never clip the buttons
 
         NumericUpDown Num(int v, int min, int max) => new() { Minimum = min, Maximum = max, Value = Math.Clamp(v, min, max), Width = 120 };
         void Row(string label, Control c) { t.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new(3, 6, 12, 3) }); t.Controls.Add(c); }
@@ -16,6 +18,8 @@ public sealed class SettingsForm : Form
         var low = Num(s.LowPercent, 5, 95);
         var crit = Num(s.CriticalPercent, 1, 50);
         var hyst = Num(s.Hysteresis, 0, 20);
+        var green = Num(s.GreenFrom, 2, 100);
+        var yellow = Num(s.YellowFrom, 1, 99);
         var poll = Num(s.PollMinutes, 1, 60);
         var remind = Num(s.ReminderMinutes, 0, 240);
         var full = new CheckBox { Checked = s.NotifyFull, AutoSize = true };
@@ -29,6 +33,8 @@ public sealed class SettingsForm : Form
         Row("Low threshold (%)", low);
         Row("Critical threshold (%)", crit);
         Row("Hysteresis (%)", hyst);
+        Row("Icon green from (%)", green);
+        Row("Icon yellow from (%, red below)", yellow);
         Row("Poll interval (min)", poll);
         Row("Repeat reminder (min, 0 = off)", remind);
         Row("Notify when fully charged", full);
@@ -50,6 +56,8 @@ public sealed class SettingsForm : Form
             s.LowPercent = (int)low.Value;
             s.CriticalPercent = Math.Min((int)crit.Value, s.LowPercent);   // critical can't exceed low
             s.Hysteresis = (int)hyst.Value;
+            s.GreenFrom = (int)green.Value;
+            s.YellowFrom = Math.Min((int)yellow.Value, s.GreenFrom - 1);        // yellow band must sit below green
             s.PollMinutes = (int)poll.Value;
             s.ReminderMinutes = (int)remind.Value;
             s.NotifyFull = full.Checked;

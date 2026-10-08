@@ -39,6 +39,12 @@ public sealed class Tray : IDisposable
         OnReading(null);
     }
 
+    /// <summary>Mock mode: add a clickable entry at the top of the right-click menu.</summary>
+    public void AddMenu(string text, Action a) => _ni.ContextMenuStrip!.Items.Insert(0, Item(text, a));
+
+    public void SetTooltipPrefix(string p) => _prefix = p;
+    string _prefix = "";
+
     static ToolStripMenuItem Item(string text, Action a)
     {
         var i = new ToolStripMenuItem(text);
@@ -55,7 +61,7 @@ public sealed class Tray : IDisposable
     {
         _last = r; _lastAt = DateTime.Now;
         _status.Text = Describe(r);
-        var tip = "MX Master 3S: " + Describe(r);
+        var tip = _prefix + "MX Master 3S: " + Describe(r);
         _ni.Text = tip[..Math.Min(63, tip.Length)];          // NotifyIcon limit: 63 chars
         UpdateIcon();
     }

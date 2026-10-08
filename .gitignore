@@ -3,3 +3,4 @@ obj/
 publish/
 *.pdb
 dist/
+dist-mock/

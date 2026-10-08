@@ -15,6 +15,6 @@ dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true 
 ```
 
 Diagnostics: `MxBattery.exe --selftest` (logic checks, exit code 0 = pass), `--probe out.txt` (trace one read of each source),
-`--icons dir` (render the icon preview sheet and `app.ico`).
+`--icons dir` (render the icon preview sheet and `app.ico`), `--popup out.png`, `--settings out.png`, `--toast low|critical|full`, `--mock` (fake battery states from the tray menu, nothing saved).
 
-Status: Bolt and Bluetooth reads verified on an MX Master 3S. The generated icons (`Icons.cs`) are not yet wired into the tray.
+Status: Bolt and Bluetooth reads verified on an MX Master 3S. Tray icon is the app icon in one solid colour: green (70-100), yellow (40-69), red (0-39); cutoffs are settings.
